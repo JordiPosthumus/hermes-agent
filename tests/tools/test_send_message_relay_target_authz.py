@@ -963,3 +963,45 @@ def test_a_caller_that_omits_the_snapshot_does_not_get_the_exemption(monkeypatch
     smt._authorize_relay_target("telegram", "@x")
     # No native_token forwarded at all -> the guard runs its own probe.
     assert "native_token" not in seen["kwargs"]
+
+
+def test_tool_guard_forwards_thread_id(monkeypatch):
+    """CALLER-LEVEL: the tool must pass thread_id INTO the guard.
+
+    thread_id is part of the DESTINATION — on Discord the thread is the literal
+    REST target, so an attested parent must not vouch for an arbitrary thread.
+    Every other test in this file calls `authorize_relay_target` directly, so
+    they all pass even when the tool drops the argument on the floor: the
+    mutation `_authorize_relay_target(platform_name, chat_id, None, ...)`
+    survived the ENTIRE tests/tools suite (146 passed).
+    """
+    import tools.send_message_tool as smt
+
+    seen = {}
+
+    def _spy(platform_name, chat_id, thread_id=None, **kwargs):
+        seen["thread_id"] = thread_id
+        # Refuse, so the send stops here and the test asserts only the wiring.
+        return "refused-for-test"
+
+    from gateway.config import Platform, PlatformConfig
+
+    monkeypatch.setattr(smt, "_authorize_relay_target", _spy)
+    monkeypatch.setattr(
+        smt, "_resolve_tool_target", lambda target: ("discord", "C1", "T99", None)
+    )
+    # Get past config resolution so execution actually reaches the guard.
+    monkeypatch.setattr(
+        smt,
+        "_resolve_platform_config",
+        lambda name, config: (
+            Platform.DISCORD,
+            PlatformConfig(enabled=True, token="t", extra={}),
+            None,
+            None,
+        ),
+    )
+
+    smt._handle_send({"target": "discord:C1:T99", "message": "hi"})
+
+    assert seen.get("thread_id") == "T99", "the tool dropped thread_id before the guard"

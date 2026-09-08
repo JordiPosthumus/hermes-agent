@@ -545,8 +545,9 @@ class AIAgent(
         env_timeout = os.getenv("HERMES_API_CALL_STALE_TIMEOUT")
         if env_timeout is not None:
             return float(env_timeout), False
-        # Reasoning-model floor (cloud gateways idle-kill mid-think); not "implicit" so the local-endpoint
-        # short-circuit does not disable stale detection here.
+        # Reasoning-model floor (cloud gateways idle-kill mid-think). Kept as an implicit value (False
+        # "explicit") so it still yields to the run-budget cap below; the local-endpoint disarm is gated on
+        # explicit user config instead (see _compute_non_stream_stale_timeout), not on this flag.
         from agent.reasoning_timeouts import get_reasoning_stale_timeout_floor
         reasoning_floor = get_reasoning_stale_timeout_floor(self.model)
         if reasoning_floor is not None:
@@ -556,9 +557,15 @@ class AIAgent(
     def _compute_non_stream_stale_timeout(self, api_payload: Any) -> float:
         """Effective non-stream stale timeout for ``api_payload`` (an ``api_kwargs`` dict or legacy ``messages``
         list), scaled by estimated context size and capped by the run budget."""
-        stale_base, uses_implicit_default = self._resolved_api_call_stale_timeout_base()
+        stale_base, _uses_implicit_default = self._resolved_api_call_stale_timeout_base()
         base_url = getattr(self, "_base_url", None) or self.base_url or ""
-        if uses_implicit_default and base_url and is_local_endpoint(base_url):
+        # A genuinely-local endpoint has no intermediate cloud gateway to idle-kill mid-think, so don't arm
+        # a cloud-calibrated stale detector against a slow self-hosted prefill — unless the user explicitly
+        # configured a stale_timeout_seconds (config/env), which always wins. This covers both the 90s
+        # default and the reasoning-model floor (e.g. deepseek-v4-flash -> 600s), which exist to survive
+        # cloud gateway idle-kills and must not constrain a machine you own. Fixes the local-LLM stale-kill
+        # of long self-hosted prefills.
+        if base_url and is_local_endpoint(base_url) and not self._stale_timeout_is_explicit():
             return float("inf")
 
         from agent.chat_completion_helpers import estimate_request_context_tokens

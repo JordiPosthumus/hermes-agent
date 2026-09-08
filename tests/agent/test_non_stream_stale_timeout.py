@@ -120,3 +120,59 @@ def test_openai_codex_stale_floor_tiers():
 
     assert openai_codex_stale_timeout_floor(55_000) == 900.0
     assert openai_codex_stale_timeout_floor(120_000) == 1200.0
+
+
+# ── local-endpoint reasoning-floor disarm (local LLM stale-kill) ──────────
+
+
+
+
+def _make_reasoning_agent(tmp_path: Path, base_url: str):
+    """Agent whose model carries a reasoning stale floor (deepseek-v4-flash -> 600s)."""
+    return _make_agent(
+        tmp_path,
+        model="deepseek-v4-flash",
+        provider="openai-codex",
+        base_url=base_url,
+    )
+
+
+def test_local_reasoning_endpoint_disarms_stale_detector(monkeypatch, tmp_path):
+    """A reasoning model on a genuinely-local endpoint must not inherit the hosted-cloud
+    reasoning floor (that floor exists for cloud gateways that idle-kill mid-think); the
+    local-endpoint short-circuit disables the stale detector instead of killing a slow
+    self-hosted prefill. Regression for the local-LLM stale-kill (#104402)."""
+    monkeypatch.setenv("HERMES_HOME", str(tmp_path))
+    (tmp_path / ".env").write_text("", encoding="utf-8")
+    monkeypatch.delenv("HERMES_API_CALL_STALE_TIMEOUT", raising=False)
+    _write_config(tmp_path, "")
+
+    agent = _make_reasoning_agent(tmp_path, "http://192.168.1.99:8080/v1")
+    # Reasoning floor still resolves (and stays non-explicit -> yields to run budget) ...
+    base, implicit = agent._resolved_api_call_stale_timeout_base()
+    assert base == 600.0 and implicit is False
+    # ... but on a local endpoint with no explicit config the detector is disarmed.
+    assert agent._compute_non_stream_stale_timeout({"input": "hi"}) == float("inf")
+
+
+def test_cloud_reasoning_endpoint_keeps_reasoning_floor(monkeypatch, tmp_path):
+    """A reasoning model on a hosted endpoint keeps the reasoning stale floor (no disarm)."""
+    monkeypatch.setenv("HERMES_HOME", str(tmp_path))
+    (tmp_path / ".env").write_text("", encoding="utf-8")
+    monkeypatch.delenv("HERMES_API_CALL_STALE_TIMEOUT", raising=False)
+    _write_config(tmp_path, "")
+
+    agent = _make_reasoning_agent(tmp_path, "https://api.deepseek.com/v1")
+    assert agent._compute_non_stream_stale_timeout({"input": "hi"}) == 600.0
+
+
+def test_local_reasoning_endpoint_explicit_config_still_wins(monkeypatch, tmp_path):
+    """An explicitly-configured stale_timeout_seconds is NOT disarmed on a local endpoint."""
+    monkeypatch.setenv("HERMES_HOME", str(tmp_path))
+    (tmp_path / ".env").write_text("", encoding="utf-8")
+    monkeypatch.delenv("HERMES_API_CALL_STALE_TIMEOUT", raising=False)
+    # Simulate a provider-level explicit config (as the runtime resolves it for the test agent).
+    monkeypatch.setenv("HERMES_API_CALL_STALE_TIMEOUT", "360000")
+
+    agent = _make_reasoning_agent(tmp_path, "http://192.168.1.99:8080/v1")
+    assert agent._compute_non_stream_stale_timeout({"input": "hi"}) == 360000.0

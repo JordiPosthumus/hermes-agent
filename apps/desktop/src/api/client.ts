@@ -21,9 +21,12 @@ const DEFAULT_GATEWAY_REQUEST_TIMEOUT_MS = 30_000
 // chains) can legitimately take minutes to ACK, so bounding the ack by the
 // generic 30s default surfaces a false "request timed out" toast while the turn
 // is still running and will succeed (issue #55024). Match the backend's
-// agent-turn ceiling (agent.gateway_timeout = 1800s) so the ack timeout only
-// ever fires when the turn itself would have been abandoned server-side.
-export const PROMPT_SUBMIT_REQUEST_TIMEOUT_MS = 1_800_000
+// agent-turn ceiling (agent.gateway_timeout) so the ack timeout only ever fires
+// when the turn itself would have been abandoned server-side.
+// 100h default (owner rule: local hardware, no time limits); overridable via
+// HERMES_TUI_RPC_TIMEOUT_MS.
+export const PROMPT_SUBMIT_REQUEST_TIMEOUT_MS =
+  Math.max(30000, parseInt(process.env.HERMES_TUI_RPC_TIMEOUT_MS ?? '360000000', 10) || 360_000_000)
 
 export class HermesGateway extends JsonRpcGatewayClient {
   constructor() {

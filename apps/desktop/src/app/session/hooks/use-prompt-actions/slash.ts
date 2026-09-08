@@ -77,8 +77,13 @@ import {
 // (capped at 630s, tui_gateway/server.py _COMPUTE_HOST_COMPRESS_WAIT_CAP_SECS)
 // and then answers `status: 'pending'` rather than an error, so this budget
 // must sit above that cap or the desktop reports a false timeout while the
-// host is still compressing (#97948).
-export const SESSION_COMPRESS_TIMEOUT_MS = 660_000
+// host is still compressing (#97948). 100h default (owner rule: local
+// hardware, no time limits); overridable via HERMES_TUI_RPC_TIMEOUT_MS (the
+// same knob the TUI client reads).
+export const SESSION_COMPRESS_TIMEOUT_MS = Math.max(
+  30000,
+  parseInt(process.env.HERMES_TUI_RPC_TIMEOUT_MS ?? '360000000', 10) || 360_000_000
+)
 const WAKE_START_TIMEOUT_MS = 180_000
 
 const wakeDeviceLabel = (device?: WakeInputDeviceStatus): string => {

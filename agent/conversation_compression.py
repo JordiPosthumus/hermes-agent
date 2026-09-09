@@ -579,8 +579,11 @@ class CompressionCommitFence:
 
 
 # Defaults for the in-agent progress-aware wrap; mirror hermes_cli.config.DEFAULT_CONFIG["compression"] keys.
-DEFAULT_CONTEXT_TIMEOUT_SECONDS = 120.0
-DEFAULT_CONTEXT_TOTAL_CEILING_SECONDS = 600.0
+# Fork-local default (long-timeout local fleet): the compression summarizer can sit on a
+# slow self-hosted gateway (xhigh) for far longer than 120s/600s. Match the 100h aux
+# compression timeout so a stalled-but-recovering gateway is not aborted at 600s (#auto-kill).
+DEFAULT_CONTEXT_TIMEOUT_SECONDS = 360000.0
+DEFAULT_CONTEXT_TOTAL_CEILING_SECONDS = 360000.0
 
 # Unlike explicit_interrupt, a /stop after the stall window arms the durable backoff (no automatic re-entry).
 # Distinct from ``explicit_interrupt``: a /stop that arrived after the summary stream had already crossed

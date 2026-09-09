@@ -590,12 +590,13 @@ DEFAULT_CONFIG = {
         # Inactivity budget for in-agent compress_context (loop, /compress, preflight); same
         # progress-aware semantics as hygiene_timeout_seconds. 0 = disable the owned wrapper
         # (callers passing commit_fence, e.g. gateway hygiene, never use it).
-        "context_timeout_seconds": 120,
+        "context_timeout_seconds": 360000,
         # Absolute cap on the *pre-commit* compress_context wait (summary/stream phase) even while
         # tokens move. Clamped >= context_timeout_seconds when that is > 0. A started SessionDB
         # commit is never abandoned: past the ceiling it is logged (WARNING, then ERROR) and
         # surfaced on the warning channel while the host keeps waiting.
-        "context_total_ceiling_seconds": 600,
+        # Fork-local: 360000 (100h) — self-hosted gateways can silence-summarize much longer than 600s.
+        "context_total_ceiling_seconds": 360000,
         # Non-system head messages always kept verbatim, in ADDITION to the (always protected)
         # system prompt. 0 = pin nothing but system prompt + summary + tail.
         "protect_first_n": 3,

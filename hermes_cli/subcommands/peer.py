@@ -25,7 +25,10 @@ _PEER_NAME_RE = re.compile(r"^[a-z0-9][a-z0-9_-]{0,63}$")
 _PROFILE_RE = re.compile(r"^[a-zA-Z0-9][a-zA-Z0-9_-]{0,63}$")
 
 # One synchronous agent turn can legitimately take minutes.
-DM_TIMEOUT_S = 600
+# Fork-local (long-timeout fleet): xhigh turns on a self-hosted gateway routinely run past the
+# old 600s cap, and the turn still completed after the CLI had already given up. Match the 100h
+# house timeout so `peer dm` waits for the reply instead of falsely reporting failure.
+DM_TIMEOUT_S = 360000
 LIST_TIMEOUT_S = 30
 
 
